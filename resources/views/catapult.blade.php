@@ -19,15 +19,15 @@
     // Physics globals
     let physicsWorld = null, tmpTrans = null, ammoTmpPos = null, ammoTmpQuat = null;
     let rigidBodies = [];               // ammo.js rigid bodies for collision
-    // let colGroup1 = 1, colGroup2 = 2, colGroup3 = 4;   // colision masks
     let tmpPos = new THREE.Vector3(), tmpQuat = new THREE.Quaternion();
     const STATE = { DISABLE_DEACTIVATION : 4 };
     const FLAGS = { CF_KINEMATIC_OBJECT: 2 };
     
     // Graphics globals
     let viewer = null;                  // three.js viewer global
+    let catapultArm = null;
     let readyToAnimate = false;
-    
+
     // Angles (in radians)
     let currentAngle = 0;
     let maxAngle = 0;
@@ -58,15 +58,15 @@
 
             if (readyToAnimate) {
 
-                // let catapultArm = viewer.groupArray[0].children[7];
-                // // let projectile = viewer.groupArray[0].children[11];
+                if (currentAngle <= maxAngle) {
 
-                // if (currentAngle <= maxAngle) {
+                    catapultArm.rotation.x += 0.025;
+                    rotateKinematicCatapultArm();
+                    currentAngle = catapultArm.rotation.x;
+                    // console.log(catapultArm.quaternion);
+                    // console.log(catapultArm.position);
 
-                //     catapultArm.rotation.x += 0.05;
-                //     currentAngle = catapultArm.rotation.x;
-
-                // }
+                }
 
                 let deltaTime = viewer.getDeltaTime();
                 updatePhysics(deltaTime);
@@ -369,6 +369,30 @@
         
         // Store ammo js physics prototype
         threeMesh.userData.physicsBody = body;
+        catapultArm = threeMesh;
+
+    }
+
+    function rotateKinematicCatapultArm() {
+
+        catapultArm.getWorldPosition(tmpPos);
+        catapultArm.getWorldQuaternion(tmpQuat);
+
+        let physicsBody = catapultArm.userData.physicsBody;
+        let ms = physicsBody.getMotionState();
+
+        if ( ms ) {
+
+            ammoTmpPos.setValue(tmpPos.x, tmpPos.y, tmpPos.z);
+            ammoTmpQuat.setValue(tmpQuat.x, tmpQuat.y, tmpQuat.z, tmpQuat.w);
+            
+            tmpTrans.setIdentity();
+            tmpTrans.setOrigin(ammoTmpPos); 
+            tmpTrans.setRotation(ammoTmpQuat); 
+
+            ms.setWorldTransform(tmpTrans);
+
+        }
 
     }
 
