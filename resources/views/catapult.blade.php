@@ -17,16 +17,19 @@
     import { MMViewer, THREE } from "/js/mmviewer/mmviewer.js";
 
     // Physics globals
-    let physicsWorld = null, tmpTrans = null, ammoTmpPos = null, ammoTmpQuat = null;
-    let rigidBodies = [];               // ammo.js rigid bodies for collision
+    let physicsWorld = null, tmpTrans = null;
     let tmpPos = new THREE.Vector3(), tmpQuat = new THREE.Quaternion();
     const STATE = { DISABLE_DEACTIVATION : 4 };
     const FLAGS = { CF_KINEMATIC_OBJECT: 2 };
     
     // Graphics globals
     let viewer = null;                  // three.js viewer global
-    let catapultArm = null;
+    // mesh ojbects
+    let catapultArm = null, projectile = null, bar1 = null, bar2 = null, bar3 = null, bar4 = null;
+    let drawCount = 0;
+    let trajectoryLine = null;
     let readyToAnimate = false;
+    let launchProjectile = false;
 
     // Angles (in radians)
     let currentAngle = 0;
@@ -35,6 +38,7 @@
     const angle2 = 0.785398;    // 45
     const angle3 = 1.178097;    // 67.5
     const angle4 = 1.5708;      // 90
+    const maxPoints = 3000;
 
     Ammo().then(start);
     
@@ -42,8 +46,6 @@
 
         // Initialize global world transform
         tmpTrans = new Ammo.btTransform();
-        ammoTmpPos = new Ammo.btVector3();
-        ammoTmpQuat = new Ammo.btQuaternion();
         
         // Set up physics and graphics
         initPhysics();
@@ -56,24 +58,53 @@
         // Animate scene with call back to update physics with delta time
         viewer.animateWithCallBack(function() {
 
+            // console.log(viewer.camera.position);
+
             if (readyToAnimate) {
 
                 if (currentAngle <= maxAngle) {
 
-                    catapultArm.rotation.x += 0.025;
-                    rotateKinematicCatapultArm();
+                    catapultArm.rotation.x += 0.05;
+                    rotateAboutPoint(projectile, catapultArm.position, new THREE.Vector3(1, 0, 0), 0.05);
                     currentAngle = catapultArm.rotation.x;
-                    // console.log(catapultArm.quaternion);
-                    // console.log(catapultArm.position);
+                    launchProjectile = true;
 
                 }
+                else if(launchProjectile) {
 
-                let deltaTime = viewer.getDeltaTime();
-                updatePhysics(deltaTime);
+                    createDynamicProjectile();
+                    createTrajectoryLine();
+                    let launchVector = new THREE.Vector3(0, 1, 0);
+                    launchVector.applyAxisAngle(new THREE.Vector3(1, 0, 0), angle4);
+                    projectile.userData.physicsBody.setLinearVelocity(new Ammo.btVector3(0, launchVector.y * 300, launchVector.z * 300));
+                    launchProjectile = false;
+                    //viewer.camera.position.x -= 100;
+
+                }
+                else {
+
+                    let deltaTime = viewer.getDeltaTime();
+                    updatePhysics(deltaTime);
+                    //viewer.camera.position.z = projectile.position.z;
+                    //viewer.setCameraLookAt(projectile.position.x, projectile.position.y, projectile.position.z);
+                    if ((drawCount) <= (maxPoints * 3))
+                        updateTrajectoryLine();
+
+                }
 
             }
 
         });
+
+    }
+
+    // Rotates object around pivot (point) about the specified axis 
+    function rotateAboutPoint(obj, point, axis, theta){
+
+        obj.position.sub(point); // remove the offset
+        obj.position.applyAxisAngle(axis, theta); // rotate the POSITION
+        obj.position.add(point); // re-add the offset
+        obj.rotateOnAxis(axis, theta); // rotate the OBJECT
 
     }
 
@@ -86,7 +117,7 @@
             solver                 = new Ammo.btSequentialImpulseConstraintSolver();
 
         physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
-        physicsWorld.setGravity(new Ammo.btVector3(0, -50, 0));
+        physicsWorld.setGravity(new Ammo.btVector3(0, -100, 0));
 
     }
 
@@ -98,7 +129,7 @@
         let height = window.innerHeight;
 
         // MMViewer initialization
-        viewer = new MMViewer({far: 2500});
+        viewer = new MMViewer({far: 10000});
         
         // Start clock and set background color
         viewer.initClock();
@@ -108,34 +139,25 @@
         // Enable shadow map
         viewer.enableShadowMap();
         
-        // Set Camera pos and orientation
-        //viewer.setCameraPos(803, 121, -459);
-        //viewer.setCameraLookAt(0, 2, -450);
-
         // Adding hemisphere light to scene
         viewer.addHemiLight(0xffffff, 0xffffff, 0.1);
         viewer.setHemiLightHSL(0.6, 0.6, 0.6);
         viewer.setHemiLightGroundHSL(0.1, 1, 0.4);
-        viewer.setHemiLightPosition(0, 50, 0);
-        viewer.addHemiLightHelper(5);
+        viewer.setHemiLightPosition(0, 500, 100);
         
         // Adding directional light to scene
         viewer.addDirectionalLight(0xffffff, 1);
         viewer.setDirectionalLightHSL(0.1, 1, 0.95);
         viewer.setDirectionalLightPosition(-1, 1.75, 1);
-        viewer.setDirectionalLightScalar(100);
+        viewer.setDirectionalLightScalar(500);
         viewer.setDirectionalLightShadowMap(2048, 2048);
         let d = 1000;
         viewer.setDirectionalLightFrustrum(-d, d, d, -d, 13500);
-        viewer.addDirectionalLightHelper(5);
-        
-        // Add plane to scene
-        viewer.addPlane(1000, 20);
         
         // Initialize orbit controls
         viewer.initOrbitControls(500, 1500);
-        viewer.setOrbitControlsTarget(0, 2, -450);
-        viewer.setCameraPos(-493, 86, -434);
+        viewer.setOrbitControlsTarget(0, 0, 0);
+        viewer.setCameraPos(-518, 103, -1.2);
         viewer.updateOrbitControls();
     
     }
@@ -143,8 +165,8 @@
     // Object creation
     function createPlane() {
     
-        let pos = {x: 0, y: 0, z: 0};
-        let scale = {x: 500, y: 2, z: 1000};
+        let pos = {x: 0, y: 0, z: 2300};
+        let scale = {x: 500, y: 2, z: 5000};
         let quat = {x: 0, y: 0, z: 0, w: 1};
         let mass = 0;
         let planeIndex;
@@ -152,8 +174,8 @@
         // threeJS Section
         if (viewer !== null) {
 
-            planeIndex = viewer.addObject({ type: 'box', position: [pos.x, pos.y, pos.z], scale: [scale.x, scale.y, scale.z], castShadow: true, receiveShadow: true, color: 0xbfd1e5 });
-        
+            planeIndex = viewer.addObject({ type: 'box', position: [pos.x, pos.y, pos.z], scale: [scale.x, scale.y, scale.z], color: 0xbfd1e5 });
+
         }
 
         //Ammojs Section
@@ -187,80 +209,61 @@
         gltfPromise.then(function(gltf) {
 
             let material = new THREE.MeshPhongMaterial({color: 0xff0505});
-            gltf.scene.position.set(0, 0, -450);
-            gltf.scene.castShadow = true;
-            gltf.scene.receiveShadow = true;
-            // console.log(gltf.scene);
-            
             let children = gltf.scene.children;
+            
             for (var i = children.length - 1; i >= 0; i--) {
                 
                 if (children[i].isMesh) {
 
                     children[i].material.dispose();
                     children[i].material = material;
+                    let name = children[i].name;
                     
-                    if (children[i].name === 'barWRidges002')
+                    if (name === 'barWRidges002') {
+                        bar1 = children[i];
                         children[i].visible = false;
-                    if (children[i].name === 'barWRidges003')
-                        children[i].visible = false;
-                    if (children[i].name === 'barWRidges004')
-                        children[i].visible = false;
-                    if (children[i].name === 'barWRidges005')
-                        children[i].visible = false;
-
-                    if (children[i].name === 'projectile') {
-
-                        // Being part of the gltf scene group messes up the collision detection for
-                        // some reason. Not adding child to another group removes it from current group
-                        createDynamicProjectile(children[i]);
-
                     }
-                    else if (children[i].name === 'catArmXL001') {
-
-                        // Being part of the gltf scene group messes up the collision detection for
-                        // some reason.
-                        currentAngle = children[i].rotation.x;
-                        maxAngle = currentAngle + angle2;
-                        createKinematicCatapult(children[i]);
-
+                    else if (name === 'barWRidges003') {
+                        bar2 = children[i];
+                        children[i].visible = false;
+                    }
+                    else if (name === 'barWRidges004') {
+                        bar3 = children[i];
+                        children[i].visible = false;
+                    }
+                    else if (name === 'barWRidges005') {
+                        bar4 = children[i];
+                        children[i].visible = false;
                     }
 
                 }
 
             }
 
+            catapultArm = gltf.scene.children[7];
+            projectile = gltf.scene.children[11];
+            
+            currentAngle = catapultArm.rotation.x;
+            maxAngle = currentAngle + angle4;
+            
             viewer.groupArray.push(gltf.scene);
             viewer.scene.add(gltf.scene);
             readyToAnimate = true;
-            // console.log(viewer.groupArray[0]);
 
         });
 
     }
 
-    function createDynamicProjectile(threeMesh) {
+    function createDynamicProjectile() {
         
         let mass = 1;
-        let radius = 6;
-
-        //threeJS Section
-        threeMesh.castShadow = true;
-        threeMesh.receiveShadow = true;
-        threeMesh.position.z += -450;
-
-        if (viewer !== null) {
-            
-            viewer.meshArray.push(threeMesh);
-            viewer.scene.add(threeMesh);
-       
-        }
+        let radius = 7.5;
 
         //Ammojs Section
         let transform = new Ammo.btTransform();
         transform.setIdentity();
-        transform.setOrigin(new Ammo.btVector3(threeMesh.position.x, threeMesh.position.y, threeMesh.position.z));
-        transform.setRotation(new Ammo.btQuaternion(threeMesh.quaternion.x, threeMesh.quaternion.y, threeMesh.quaternion.z, threeMesh.quaternion.w));
+        transform.setOrigin(new Ammo.btVector3(projectile.position.x, projectile.position.y, projectile.position.z));
+        transform.setRotation(new Ammo.btQuaternion(projectile.quaternion.x, projectile.quaternion.y, projectile.quaternion.z, projectile.quaternion.w));
         
         let motionState = new Ammo.btDefaultMotionState(transform);
         let colShape = new Ammo.btSphereShape(radius);
@@ -277,147 +280,55 @@
         physicsWorld.addRigidBody(body);
 
         // Store ammo js physics prototype
-        threeMesh.userData.physicsBody = body;
-        // threeMesh.userData.physicsBody.setLinearVelocity(new Ammo.btVector3(0, 100, 200));
-        rigidBodies.push(threeMesh);
+        projectile.userData.physicsBody = body;
 
     }
 
-    function createKinematicCatapult(threeMesh) {
+    function createTrajectoryLine() {
         
-        // console.log(threeMesh);
-        let geometry = threeMesh.geometry.toNonIndexed();
-        // console.log(geometry);
-        let vertices = geometry.attributes.position.array;
-        // console.log(vertices);
-        let scaleX = threeMesh.scale.x;
-        let scaleY = threeMesh.scale.y;
-        let scaleZ = threeMesh.scale.z;
-
-        let mass = 0;
-        let triangles = [];
-        let triangleMesh = new Ammo.btTriangleMesh();
-        let vec1 = new Ammo.btVector3(0,0,0);
-        let vec2 = new Ammo.btVector3(0,0,0);
-        let vec3 = new Ammo.btVector3(0,0,0);
-
-        //threeJS Section
-        threeMesh.castShadow = true;
-        threeMesh.receiveShadow = true;
-        threeMesh.position.z += -450;
-        // threeMesh.visible = false;
-
-        if (viewer !== null) {
-            
-            viewer.meshArray.push(threeMesh);
-            viewer.scene.add(threeMesh);
-       
-        }
-
-        //Ammojs Section
-        // ugly but optimal
-        for (let i = 0; i < vertices.length / 9; i++) {
-            
-            triangles.push([
-                { x: vertices[i * 9] * scaleX, y: vertices[(i * 9) + 1] * scaleY, z: vertices[(i * 9) + 2] * scaleZ },
-                { x: vertices[(i * 9) + 3] * scaleX, y: vertices[(i * 9) + 4] * scaleY, z: vertices[(i * 9) + 5] * scaleZ },
-                { x: vertices[(i * 9) + 6] * scaleX, y: vertices[(i * 9) + 7] * scaleY, z: vertices[(i * 9) + 8] * scaleZ }
-            ]);
-
-        }
-        // console.log(triangles);
-
-        for (let i = 0; i < triangles.length; i++) {
-            
-            let triangle = triangles[i];
-
-            vec1.setX(triangle[0].x);
-            vec1.setY(triangle[0].y);
-            vec1.setZ(triangle[0].z);
-
-            vec2.setX(triangle[1].x);
-            vec2.setY(triangle[1].y);
-            vec2.setZ(triangle[1].z);
-
-            vec3.setX(triangle[2].x);
-            vec3.setY(triangle[2].y);
-            vec3.setZ(triangle[2].z);
-
-            triangleMesh.addTriangle(vec1, vec2, vec3, true);
-
-        }
-        // console.log(triangleMesh);
-
-        let colShape = new Ammo.btBvhTriangleMeshShape(triangleMesh, true, true);
-        colShape.setMargin(0.05);
-
-        let transform = new Ammo.btTransform();
-        transform.setIdentity();
-        transform.setOrigin(new Ammo.btVector3(threeMesh.position.x, threeMesh.position.y, threeMesh.position.z));
-        transform.setRotation(new Ammo.btQuaternion(threeMesh.quaternion.x, threeMesh.quaternion.y, threeMesh.quaternion.z, threeMesh.quaternion.w));
-        let motionState = new Ammo.btDefaultMotionState(transform);
-
-        let localInertia = new Ammo.btVector3(0, 0, 0);
-        colShape.calculateLocalInertia(mass, localInertia);
-
-        let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
-        let body = new Ammo.btRigidBody(rbInfo);
-
-        body.setActivationState(STATE.DISABLE_DEACTIVATION);
-        body.setCollisionFlags(FLAGS.CF_KINEMATIC_OBJECT);
-        physicsWorld.addRigidBody(body);
+        var material = new THREE.LineBasicMaterial({ color: 0x0000ff, depthTest: false });
         
-        // Store ammo js physics prototype
-        threeMesh.userData.physicsBody = body;
-        catapultArm = threeMesh;
+        let geometry = new THREE.BufferGeometry();
+        let positions = new Float32Array(maxPoints * 3); // 3 vertices per point
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
+        trajectoryLine = new THREE.Line(geometry, material);
+        viewer.meshArray.push(trajectoryLine);
+        viewer.scene.add(trajectoryLine);
     }
 
-    function rotateKinematicCatapultArm() {
+    function updateTrajectoryLine() {
 
-        catapultArm.getWorldPosition(tmpPos);
-        catapultArm.getWorldQuaternion(tmpQuat);
-
-        let physicsBody = catapultArm.userData.physicsBody;
-        let ms = physicsBody.getMotionState();
-
-        if ( ms ) {
-
-            ammoTmpPos.setValue(tmpPos.x, tmpPos.y, tmpPos.z);
-            ammoTmpQuat.setValue(tmpQuat.x, tmpQuat.y, tmpQuat.z, tmpQuat.w);
-            
-            tmpTrans.setIdentity();
-            tmpTrans.setOrigin(ammoTmpPos); 
-            tmpTrans.setRotation(ammoTmpQuat); 
-
-            ms.setWorldTransform(tmpTrans);
-
-        }
+        var positions = trajectoryLine.geometry.attributes.position.array;
+        positions[drawCount * 3] = projectile.position.x;
+        positions[(drawCount * 3) + 1] = projectile.position.y;
+        positions[(drawCount * 3) + 2] = projectile.position.z;
+        drawCount += 1;
+        trajectoryLine.geometry.setDrawRange(0, drawCount);
+        trajectoryLine.geometry.attributes.position.needsUpdate = true; // required after the first render
+        trajectoryLine.geometry.computeBoundingSphere();
 
     }
 
     function updatePhysics(deltaTime) {
 
+        if (deltaTime === 0)
+            return;
+
         // Step world
         physicsWorld.stepSimulation(deltaTime, 10);
 
-        // Update rigid bodies
-        for (let i = 0; i < rigidBodies.length; i++) {
+        let objAmmo = projectile.userData.physicsBody;
+        let ms = objAmmo.getMotionState();
+
+        if (ms) {
             
-            let objThree = rigidBodies[i];
-            let objAmmo = objThree.userData.physicsBody;
-            let ms = objAmmo.getMotionState();
-
-            if (ms) {
-                
-                ms.getWorldTransform(tmpTrans);
-                let p = tmpTrans.getOrigin();
-                let q = tmpTrans.getRotation();
-                objThree.position.set(p.x(), p.y(), p.z());
-                objThree.quaternion.set(q.x(), q.y(), q.z(), q.w());
-                
-            }
-
+            ms.getWorldTransform(tmpTrans);
+            let p = tmpTrans.getOrigin();
+            let q = tmpTrans.getRotation();
+            projectile.position.set(p.x(), p.y(), p.z());
+            projectile.quaternion.set(q.x(), q.y(), q.z(), q.w());
+            
         }
 
     }
