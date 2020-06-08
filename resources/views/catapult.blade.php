@@ -3,11 +3,45 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
     <title>MMViewer Test</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+    <style>
+        
+        button{
+          margin: 5px;
+        }
+        
+        #ui {
+          position: absolute;
+          background-color: lightgrey;
+          bottom:0; 
+          right:0;
+          border-radius: 10px;
+          width: 20%;
+          padding: 10px;
+        }
+
+    </style>
 
 </head>
 <body>
+    <div id="scene">
+        <div id="ui">
+            <div>
+                <button id="reset">Reset Catapult</button>
+            </div>
+            <div>
+                <button id="launch">Launch</button>
+            </div>
+            <div>
+                <button id="health">Launch Angle: 22.5</button>
+            </div>
+            <div>
+                <button id="shield">Camera View</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 
@@ -19,26 +53,27 @@
     // Physics globals
     let physicsWorld = null, tmpTrans = null;
     let tmpPos = new THREE.Vector3(), tmpQuat = new THREE.Quaternion();
-    const STATE = { DISABLE_DEACTIVATION : 4 };
-    const FLAGS = { CF_KINEMATIC_OBJECT: 2 };
     
     // Graphics globals
     let viewer = null;                  // three.js viewer global
     // mesh ojbects
-    let catapultArm = null, projectile = null, bar1 = null, bar2 = null, bar3 = null, bar4 = null;
+    let catapultArm = null, projectile = null, bar1 = null, bar2 = null, bar3 = null, bar4 = null, trajectoryLine = null;
     let drawCount = 0;
-    let trajectoryLine = null;
     let readyToAnimate = false;
-    let launchProjectile = false;
+    let setUpToLaunch = false;
+    let launch = false;
+    let originalProjectilePos = null;
+    let originalArmAngle = 0;
 
     // Angles (in radians)
-    let currentAngle = 0;
+    let armAngle = 0;
     let maxAngle = 0;
     const angle1 = 0.3926991;   // 22.5
     const angle2 = 0.785398;    // 45
     const angle3 = 1.178097;    // 67.5
     const angle4 = 1.5708;      // 90
-    const maxPoints = 3000;
+    let launchAngle = angle1;
+    const maxPoints = 9000;
 
     Ammo().then(start);
     
@@ -54,30 +89,35 @@
         // Add Plane and Ball into viewer (scene)
         createPlane();
         createCatapult();
+        createTrajectoryLine();
+        setUpCallBacks();
 
         // Animate scene with call back to update physics with delta time
         viewer.animateWithCallBack(function() {
 
             // console.log(viewer.camera.position);
 
-            if (readyToAnimate) {
+            if (readyToAnimate && launch) {
 
-                if (currentAngle <= maxAngle) {
+                if (armAngle <= maxAngle) {
 
                     catapultArm.rotation.x += 0.05;
+                    armAngle = catapultArm.rotation.x;
                     rotateAboutPoint(projectile, catapultArm.position, new THREE.Vector3(1, 0, 0), 0.05);
-                    currentAngle = catapultArm.rotation.x;
-                    launchProjectile = true;
+                    setUpToLaunch = true;
 
                 }
-                else if(launchProjectile) {
+                else if(setUpToLaunch) {
 
-                    createDynamicProjectile();
-                    createTrajectoryLine();
+                    if (projectile.userData.physicsBody === undefined) {
+                        console.log('rigid body created');
+                        createDynamicProjectile();
+                    }
+
                     let launchVector = new THREE.Vector3(0, 1, 0);
-                    launchVector.applyAxisAngle(new THREE.Vector3(1, 0, 0), angle4);
+                    launchVector.applyAxisAngle(new THREE.Vector3(1, 0, 0), launchAngle);
                     projectile.userData.physicsBody.setLinearVelocity(new Ammo.btVector3(0, launchVector.y * 300, launchVector.z * 300));
-                    launchProjectile = false;
+                    setUpToLaunch = false;
                     //viewer.camera.position.x -= 100;
 
                 }
@@ -87,7 +127,7 @@
                     updatePhysics(deltaTime);
                     //viewer.camera.position.z = projectile.position.z;
                     //viewer.setCameraLookAt(projectile.position.x, projectile.position.y, projectile.position.z);
-                    if ((drawCount) <= (maxPoints * 3))
+                    if ((drawCount) <= (maxPoints))
                         updateTrajectoryLine();
 
                 }
@@ -98,9 +138,56 @@
 
     }
 
-    // Rotates object around pivot (point) about the specified axis 
-    function rotateAboutPoint(obj, point, axis, theta){
+    function setUpCallBacks() {
+        
+        $("#reset").click(function() {
 
+            launch = false;
+            drawCount = 0;
+            if (trajectoryLine !== null)
+                trajectoryLine.geometry.setDrawRange(0, drawCount);
+        
+            if (readyToAnimate) {
+
+                catapultArm.rotation.x = originalArmAngle;
+                armAngle = catapultArm.rotation.x;
+                projectile.position.set(originalProjectilePos.x, originalProjectilePos.y, originalProjectilePos.z);
+
+                let objAmmo = projectile.userData.physicsBody;
+
+                if (objAmmo) {
+
+                    let transform = new Ammo.btTransform();
+                    let ms = objAmmo.getMotionState();
+                    
+                    transform.setIdentity();
+                    transform.setOrigin(new Ammo.btVector3(projectile.position.x, projectile.position.y, projectile.position.z));
+                    transform.setRotation(new Ammo.btQuaternion(projectile.quaternion.x, projectile.quaternion.y, projectile.quaternion.z, projectile.quaternion.w));
+                    
+                    objAmmo.setWorldTransform(transform);
+                    objAmmo.setLinearVelocity(new Ammo.btVector3(0, 0, 0));
+                    objAmmo.setAngularVelocity(new Ammo.btVector3(0, 0, 0));
+                    objAmmo.clearForces();
+                    
+                    if (ms)
+                        ms.setWorldTransform(transform);
+
+                }
+
+            }
+
+        });
+
+        $("#launch").click(function() {
+            launch = true;
+        });
+
+    }
+
+    // Rotates object around pivot (point) about the specified axis 
+    function rotateAboutPoint(obj, point, axis, theta) {
+
+        console.log('rotate called');
         obj.position.sub(point); // remove the offset
         obj.position.applyAxisAngle(axis, theta); // rotate the POSITION
         obj.position.add(point); // re-add the offset
@@ -208,44 +295,70 @@
         
         gltfPromise.then(function(gltf) {
 
-            let material = new THREE.MeshPhongMaterial({color: 0xff0505});
+            let material = new THREE.MeshPhongMaterial({ color: 0xff0505 });
             let children = gltf.scene.children;
             
             for (var i = children.length - 1; i >= 0; i--) {
                 
                 if (children[i].isMesh) {
 
-                    children[i].material.dispose();
-                    children[i].material = material;
                     let name = children[i].name;
+                    children[i].material.dispose();
                     
                     if (name === 'barWRidges002') {
+                        
                         bar1 = children[i];
                         children[i].visible = false;
+                        children[i].material = material;
+
                     }
                     else if (name === 'barWRidges003') {
+                        
                         bar2 = children[i];
                         children[i].visible = false;
+                        children[i].material = material;
+
                     }
                     else if (name === 'barWRidges004') {
+                        
                         bar3 = children[i];
                         children[i].visible = false;
+                        children[i].material = material;
+
                     }
                     else if (name === 'barWRidges005') {
+                        
                         bar4 = children[i];
                         children[i].visible = false;
+                        children[i].material = material;
+
+                    }
+                    else if (name === 'projectile') {
+                        
+                        projectile = children[i];
+                        children[i].material = new THREE.MeshPhongMaterial({ color: 0xffd700 });
+
+                    }
+                    else if (name === 'catArmXL001') {
+
+                        catapultArm = children[i];
+                        children[i].material = material;
+
+                    }
+                    else {
+
+                        children[i].material = material;
+
                     }
 
                 }
 
             }
 
-            catapultArm = gltf.scene.children[7];
-            projectile = gltf.scene.children[11];
-            
-            currentAngle = catapultArm.rotation.x;
-            maxAngle = currentAngle + angle4;
-            
+            originalProjectilePos = new THREE.Vector3(projectile.position.x, projectile.position.y, projectile.position.z);
+            originalArmAngle = armAngle = catapultArm.rotation.x;
+            maxAngle = armAngle + launchAngle;
+
             viewer.groupArray.push(gltf.scene);
             viewer.scene.add(gltf.scene);
             readyToAnimate = true;
@@ -286,24 +399,26 @@
 
     function createTrajectoryLine() {
         
-        var material = new THREE.LineBasicMaterial({ color: 0x0000ff, depthTest: false });
-        
+        let material = new THREE.LineBasicMaterial({ color: 0x0000ff, depthTest: false });
         let geometry = new THREE.BufferGeometry();
-        let positions = new Float32Array(maxPoints * 3); // 3 vertices per point
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        let positions = new Float32Array(maxPoints); // 3 vertices per point
 
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         trajectoryLine = new THREE.Line(geometry, material);
         viewer.meshArray.push(trajectoryLine);
         viewer.scene.add(trajectoryLine);
+
     }
 
     function updateTrajectoryLine() {
 
         var positions = trajectoryLine.geometry.attributes.position.array;
+        
         positions[drawCount * 3] = projectile.position.x;
         positions[(drawCount * 3) + 1] = projectile.position.y;
         positions[(drawCount * 3) + 2] = projectile.position.z;
         drawCount += 1;
+        
         trajectoryLine.geometry.setDrawRange(0, drawCount);
         trajectoryLine.geometry.attributes.position.needsUpdate = true; // required after the first render
         trajectoryLine.geometry.computeBoundingSphere();
@@ -314,7 +429,7 @@
 
         if (deltaTime === 0)
             return;
-
+        
         // Step world
         physicsWorld.stepSimulation(deltaTime, 10);
 
@@ -322,13 +437,13 @@
         let ms = objAmmo.getMotionState();
 
         if (ms) {
-            
+                
             ms.getWorldTransform(tmpTrans);
             let p = tmpTrans.getOrigin();
             let q = tmpTrans.getRotation();
             projectile.position.set(p.x(), p.y(), p.z());
             projectile.quaternion.set(q.x(), q.y(), q.z(), q.w());
-            
+                
         }
 
     }
