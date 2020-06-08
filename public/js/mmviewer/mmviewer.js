@@ -79,8 +79,7 @@ class MMViewer {
 
     initClock() {
 
-        if (this.clock === null)
-            this.clock = new THREE.Clock();
+        this.clock = new THREE.Clock();
 
     }
 
@@ -90,7 +89,6 @@ class MMViewer {
             return this.clock.getDelta();
 
     }
-
 
     enableShadowMap() {
 

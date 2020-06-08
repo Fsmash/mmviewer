@@ -8,18 +8,18 @@
 
     <style>
         
-        button{
-          margin: 5px;
-        }
-        
         #ui {
-          position: absolute;
-          background-color: lightgrey;
-          bottom:0; 
-          right:0;
-          border-radius: 10px;
-          width: 20%;
-          padding: 10px;
+            position: absolute;
+            background-color: lightgrey;
+            bottom:0; 
+            right:0;
+            border-radius: 10px;
+            width: 20%;
+            padding: 10px;
+        }
+
+        #setForce {
+            width: 15%;
         }
 
     </style>
@@ -29,16 +29,22 @@
     <div id="scene">
         <div id="ui">
             <div>
+                <button id="launch">Launch</button>
                 <button id="reset">Reset Catapult</button>
             </div>
             <div>
-                <button id="launch">Launch</button>
+                <select id="launchAngle">
+                  <option value="angle1">22.5 Degrees</option>
+                  <option value="angle2">45 Degrees</option>
+                  <option value="angle3">67.5 Degrees</option>
+                  <option value="angle4">90 Degrees</option>
+                </select>
+                <input type="number" id="setForce" step="1" min="1" max="10" value="1">
             </div>
             <div>
-                <button id="health">Launch Angle: 22.5</button>
-            </div>
-            <div>
-                <button id="shield">Camera View</button>
+                <button id="resetCamera">Reset Camera</button>
+                <input type="checkbox" id="followTrajectory" name="followTrajectory">
+                <label for="followTrajectory">Follow Trajectory</label><br>
             </div>
         </div>
     </div>
@@ -59,21 +65,23 @@
     // mesh ojbects
     let catapultArm = null, projectile = null, bar1 = null, bar2 = null, bar3 = null, bar4 = null, trajectoryLine = null;
     let drawCount = 0;
+    let launch = false;
     let readyToAnimate = false;
     let setUpToLaunch = false;
-    let launch = false;
     let originalProjectilePos = null;
-    let originalArmAngle = 0;
+    let followTrajectory = false;
 
     // Angles (in radians)
     let armAngle = 0;
     let maxAngle = 0;
+    let originalArmAngle = 0;
     const angle1 = 0.3926991;   // 22.5
     const angle2 = 0.785398;    // 45
     const angle3 = 1.178097;    // 67.5
     const angle4 = 1.5708;      // 90
-    let launchAngle = angle1;
     const maxPoints = 9000;
+    let launchAngle = angle1;
+    let force = 200;
 
     Ammo().then(start);
     
@@ -95,8 +103,6 @@
         // Animate scene with call back to update physics with delta time
         viewer.animateWithCallBack(function() {
 
-            // console.log(viewer.camera.position);
-
             if (readyToAnimate && launch) {
 
                 if (armAngle <= maxAngle) {
@@ -109,26 +115,31 @@
                 }
                 else if(setUpToLaunch) {
 
-                    if (projectile.userData.physicsBody === undefined) {
-                        console.log('rigid body created');
-                        createDynamicProjectile();
-                    }
-
+                    createDynamicProjectile();
                     let launchVector = new THREE.Vector3(0, 1, 0);
                     launchVector.applyAxisAngle(new THREE.Vector3(1, 0, 0), launchAngle);
-                    projectile.userData.physicsBody.setLinearVelocity(new Ammo.btVector3(0, launchVector.y * 300, launchVector.z * 300));
+                    projectile.userData.physicsBody.setLinearVelocity(new Ammo.btVector3(0, launchVector.y * force, launchVector.z * force));
                     setUpToLaunch = false;
-                    //viewer.camera.position.x -= 100;
+                    viewer.initClock();
+                    
+                    if (followTrajectory)
+                        viewer.camera.position.x = -1000;
 
                 }
                 else {
 
                     let deltaTime = viewer.getDeltaTime();
                     updatePhysics(deltaTime);
-                    //viewer.camera.position.z = projectile.position.z;
-                    //viewer.setCameraLookAt(projectile.position.x, projectile.position.y, projectile.position.z);
                     if ((drawCount) <= (maxPoints))
                         updateTrajectoryLine();
+
+                    if (followTrajectory) {
+                        
+                        viewer.camera.position.z = projectile.position.z;
+                        viewer.setOrbitControlsTarget(projectile.position.x, projectile.position.y, projectile.position.z);
+                        viewer.updateOrbitControls();
+
+                    }
 
                 }
 
@@ -140,7 +151,7 @@
 
     function setUpCallBacks() {
         
-        $("#reset").click(function() {
+        $('#reset').click(function() {
 
             launch = false;
             drawCount = 0;
@@ -151,35 +162,68 @@
 
                 catapultArm.rotation.x = originalArmAngle;
                 armAngle = catapultArm.rotation.x;
+                maxAngle = armAngle + launchAngle;
                 projectile.position.set(originalProjectilePos.x, originalProjectilePos.y, originalProjectilePos.z);
-
-                let objAmmo = projectile.userData.physicsBody;
-
-                if (objAmmo) {
-
-                    let transform = new Ammo.btTransform();
-                    let ms = objAmmo.getMotionState();
-                    
-                    transform.setIdentity();
-                    transform.setOrigin(new Ammo.btVector3(projectile.position.x, projectile.position.y, projectile.position.z));
-                    transform.setRotation(new Ammo.btQuaternion(projectile.quaternion.x, projectile.quaternion.y, projectile.quaternion.z, projectile.quaternion.w));
-                    
-                    objAmmo.setWorldTransform(transform);
-                    objAmmo.setLinearVelocity(new Ammo.btVector3(0, 0, 0));
-                    objAmmo.setAngularVelocity(new Ammo.btVector3(0, 0, 0));
-                    objAmmo.clearForces();
-                    
-                    if (ms)
-                        ms.setWorldTransform(transform);
-
-                }
 
             }
 
         });
 
-        $("#launch").click(function() {
+        $('#launch').click(function() {
+
             launch = true;
+
+        });
+
+        $('#setForce').change(function () {
+
+            force = (this.value * 100) + 100;
+
+        })
+
+        $('#launchAngle').change(function() {
+
+            bar1.visible = false;
+            bar2.visible = false;
+            bar3.visible = false;
+            bar4.visible = false;
+        
+            if (this.value === 'angle1') {
+                launchAngle = angle1;
+                bar1.visible = true;
+            }
+            else if (this.value === 'angle2') {
+                launchAngle = angle2;
+                bar2.visible = true;
+            }
+            else if (this.value === 'angle3') {
+                launchAngle = angle3;
+                bar3.visible = true;
+            }
+            else {
+                launchAngle = angle4;
+                bar4.visible = true;
+            }
+
+            $('#reset').trigger('click');
+
+        });
+
+        $('#resetCamera').click(function () {
+
+            viewer.setOrbitControlsTarget(0, 0, 0);
+            viewer.setCameraPos(-1018, 503, -1.2);
+            viewer.updateOrbitControls();
+            
+        })
+
+        $('#followTrajectory').change(function() {
+            
+            followTrajectory = this.checked;
+
+            if (!followTrajectory)
+                $('#resetCamera').trigger('click');
+
         });
 
     }
@@ -187,7 +231,6 @@
     // Rotates object around pivot (point) about the specified axis 
     function rotateAboutPoint(obj, point, axis, theta) {
 
-        console.log('rotate called');
         obj.position.sub(point); // remove the offset
         obj.position.applyAxisAngle(axis, theta); // rotate the POSITION
         obj.position.add(point); // re-add the offset
@@ -204,7 +247,7 @@
             solver                 = new Ammo.btSequentialImpulseConstraintSolver();
 
         physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
-        physicsWorld.setGravity(new Ammo.btVector3(0, -100, 0));
+        physicsWorld.setGravity(new Ammo.btVector3(0, -200, 0));
 
     }
 
@@ -216,10 +259,8 @@
         let height = window.innerHeight;
 
         // MMViewer initialization
-        viewer = new MMViewer({far: 10000});
+        viewer = new MMViewer({far: 50000});
         
-        // Start clock and set background color
-        viewer.initClock();
         viewer.initStats();
         viewer.setBackgroundColor(0x87ceeb);
 
@@ -242,9 +283,9 @@
         viewer.setDirectionalLightFrustrum(-d, d, d, -d, 13500);
         
         // Initialize orbit controls
-        viewer.initOrbitControls(500, 1500);
+        viewer.initOrbitControls(500, 15000);
         viewer.setOrbitControlsTarget(0, 0, 0);
-        viewer.setCameraPos(-518, 103, -1.2);
+        viewer.setCameraPos(-1018, 503, -1.2);
         viewer.updateOrbitControls();
     
     }
@@ -252,8 +293,8 @@
     // Object creation
     function createPlane() {
     
-        let pos = {x: 0, y: 0, z: 2300};
-        let scale = {x: 500, y: 2, z: 5000};
+        let pos = {x: 0, y: 0, z: 4800};
+        let scale = {x: 500, y: 2, z: 10000};
         let quat = {x: 0, y: 0, z: 0, w: 1};
         let mass = 0;
         let planeIndex;
@@ -308,7 +349,6 @@
                     if (name === 'barWRidges002') {
                         
                         bar1 = children[i];
-                        children[i].visible = false;
                         children[i].material = material;
 
                     }
@@ -368,6 +408,14 @@
     }
 
     function createDynamicProjectile() {
+
+        if (projectile.userData.physicsBody) {
+
+            physicsWorld.removeRigidBody(projectile.userData.physicsBody);
+            Ammo.destroy(projectile.userData.physicsBody);
+            projectile.userData.physicsBody = null;
+
+        }
         
         let mass = 1;
         let radius = 7.5;
@@ -430,9 +478,7 @@
         if (deltaTime === 0)
             return;
         
-        // Step world
-        physicsWorld.stepSimulation(deltaTime, 10);
-
+        physicsWorld.stepSimulation(deltaTime, 10, 1 / 800);
         let objAmmo = projectile.userData.physicsBody;
         let ms = objAmmo.getMotionState();
 
