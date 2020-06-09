@@ -8,18 +8,22 @@
 
     <style>
         
+        div {
+            margin: 5px;
+        }
+
         #ui {
             position: absolute;
             background-color: lightgrey;
             bottom:0; 
             right:0;
             border-radius: 10px;
-            width: 20%;
+            width: 40%;
             padding: 10px;
         }
 
         #setForce {
-            width: 15%;
+            width: 8%;
         }
 
     </style>
@@ -28,6 +32,19 @@
 <body>
     <div id="scene">
         <div id="ui">
+            <div>
+                <label>Distance: </label>
+                <input type="text" disabled="true" id="projectileDist" style="width:20%">
+                <select id="units">
+                  <option value="mm">mm</option>
+                  <option value="cm">cm</option>
+                  <option value="m">m</option>
+                  <option value="in">in</option>
+                  <option value="ft">ft</option>
+                </select>
+                <label>Postion: </label>
+                <input type="text" disabled="true" id="projectilePos" style="width:40%">
+            </div>
             <div>
                 <button id="launch">Launch</button>
                 <button id="reset">Reset Catapult</button>
@@ -39,6 +56,7 @@
                   <option value="angle3">67.5 Degrees</option>
                   <option value="angle4">90 Degrees</option>
                 </select>
+                <label>Force (in Newtons): </label>
                 <input type="number" id="setForce" step="1" min="1" max="10" value="1">
             </div>
             <div>
@@ -70,6 +88,7 @@
     let setUpToLaunch = false;
     let originalProjectilePos = null;
     let followTrajectory = false;
+    // let gotDistance = false;
 
     // Angles (in radians)
     let armAngle = 0;
@@ -82,6 +101,7 @@
     const maxPoints = 9000;
     let launchAngle = angle1;
     let force = 200;
+    let unitConversion = 1;
 
     Ammo().then(start);
     
@@ -107,9 +127,9 @@
 
                 if (armAngle <= maxAngle) {
 
-                    catapultArm.rotation.x += 0.05;
+                    catapultArm.rotation.x += 0.1;
                     armAngle = catapultArm.rotation.x;
-                    rotateAboutPoint(projectile, catapultArm.position, new THREE.Vector3(1, 0, 0), 0.05);
+                    rotateAboutPoint(projectile, catapultArm.position, new THREE.Vector3(1, 0, 0), 0.1);
                     setUpToLaunch = true;
 
                 }
@@ -119,6 +139,7 @@
                     let launchVector = new THREE.Vector3(0, 1, 0);
                     launchVector.applyAxisAngle(new THREE.Vector3(1, 0, 0), launchAngle);
                     projectile.userData.physicsBody.setLinearVelocity(new Ammo.btVector3(0, launchVector.y * force, launchVector.z * force));
+                    // gotDistance = 
                     setUpToLaunch = false;
                     viewer.initClock();
                     
@@ -130,6 +151,7 @@
 
                     let deltaTime = viewer.getDeltaTime();
                     updatePhysics(deltaTime);
+                    
                     if ((drawCount) <= (maxPoints))
                         updateTrajectoryLine();
 
@@ -141,6 +163,25 @@
 
                     }
 
+                    let projectilePos = projectile.position;
+                    
+                    $('#projectilePos').val('x: ' + (projectilePos.x / unitConversion).toFixed(2) + ' y: ' + (projectilePos.y / unitConversion).toFixed(2) + ' z: ' + (projectilePos.z / unitConversion).toFixed(2));
+                        
+                    let catapultPos = viewer.groupArray[0].position;
+                    let dist = catapultPos.distanceTo(projectilePos);
+                    
+                    $('#projectileDist').val((dist / unitConversion).toFixed(2) + ' ' +  $('#units').val());
+
+                    // if (projectilePos.y <= 15 && !gotDistance) {
+                        
+                    //     let catapultPos = viewer.groupArray[0].position;
+                    //     let dist = catapultPos.distanceTo(projectilePos);
+                        
+                    //     $('#projectileDist').val((dist / unitConversion).toFixed(2) + ' cm');
+                    //     gotDistance = true;
+
+                    // }
+
                 }
 
             }
@@ -151,10 +192,30 @@
 
     function setUpCallBacks() {
         
+        $('#units').change(function() {
+
+            let unit = this.value;
+
+            if (unit === 'mm')
+                unitConversion = 1;
+            else if (unit === 'cm') 
+                unitConversion = 10;
+            else if (unit === 'm')
+                unitConversion = 100;
+            else if (unit === 'in')
+                unitConversion = 25.4;
+            else if (unit === 'ft')
+                unitConversion = 305;
+
+        })
+
         $('#reset').click(function() {
 
+            $('#projectilePos').val('');
+            $('#projectileDist').val('');
             launch = false;
             drawCount = 0;
+
             if (trajectoryLine !== null)
                 trajectoryLine.geometry.setDrawRange(0, drawCount);
         
@@ -247,7 +308,7 @@
             solver                 = new Ammo.btSequentialImpulseConstraintSolver();
 
         physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
-        physicsWorld.setGravity(new Ammo.btVector3(0, -200, 0));
+        physicsWorld.setGravity(new Ammo.btVector3(0, -105, 0));
 
     }
 
@@ -293,8 +354,8 @@
     // Object creation
     function createPlane() {
     
-        let pos = {x: 0, y: 0, z: 4800};
-        let scale = {x: 500, y: 2, z: 10000};
+        let pos = {x: 0, y: 0, z: 7200};
+        let scale = {x: 500, y: 2, z: 15000};
         let quat = {x: 0, y: 0, z: 0, w: 1};
         let mass = 0;
         let planeIndex;
