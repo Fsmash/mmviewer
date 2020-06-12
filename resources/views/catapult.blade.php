@@ -36,28 +36,30 @@
                 <label>Distance: </label>
                 <input type="text" disabled="true" id="projectileDist" style="width:20%">
                 <select id="units">
-                  <option value="mm">mm</option>
-                  <option value="cm">cm</option>
-                  <option value="m">m</option>
-                  <option value="in">in</option>
-                  <option value="ft">ft</option>
+                    <option value="cm">cm</option>
+                    <option value="mm">mm</option>
+                    <option value="m">m</option>
+                    <option value="in">in</option>
+                    <option value="ft">ft</option>
                 </select>
                 <label>Postion: </label>
                 <input type="text" disabled="true" id="projectilePos" style="width:40%">
             </div>
             <div>
                 <button id="launch">Launch</button>
+                <label>Rotate Catapult (in Degrees): </label>
+                <input type="number" id="rotateCatapult" step="1" min="-180" max="180" value="0">
                 <button id="reset">Reset Catapult</button>
-            </div>
-            <div>
                 <select id="launchAngle">
-                  <option value="angle1">22.5 Degrees</option>
-                  <option value="angle2">45 Degrees</option>
-                  <option value="angle3">67.5 Degrees</option>
-                  <option value="angle4">90 Degrees</option>
+                    <option value="angle1">22.5 Degrees</option>
+                    <option value="angle2">45 Degrees</option>
+                    <option value="angle3">67.5 Degrees</option>
+                    <option value="angle4">90 Degrees</option>
                 </select>
                 <label>Force (in Newtons): </label>
                 <input type="number" id="setForce" step="1" min="1" max="10" value="1">
+                <label>Mass (in Grams): </label>
+                <input type="number" id="setMass" step="1" min="1" max="10" value="1">
             </div>
             <div>
                 <button id="resetCamera">Reset Camera</button>
@@ -88,7 +90,7 @@
     let setUpToLaunch = false;
     let originalProjectilePos = null;
     let followTrajectory = false;
-    // let gotDistance = false;
+    let gotDistance = false;
 
     // Angles (in radians)
     let armAngle = 0;
@@ -98,10 +100,12 @@
     const angle2 = 0.785398;    // 45
     const angle3 = 1.178097;    // 67.5
     const angle4 = 1.5708;      // 90
-    const maxPoints = 9000;
+    const maxPoints = 12000;
     let launchAngle = angle1;
-    let force = 200;
+    let force = 300;
+    let mass = 1;
     let unitConversion = 1;
+    let distance = 0;
 
     Ammo().then(start);
     
@@ -138,9 +142,10 @@
                     createDynamicProjectile();
                     let launchVector = new THREE.Vector3(0, 1, 0);
                     launchVector.applyAxisAngle(new THREE.Vector3(1, 0, 0), launchAngle);
-                    projectile.userData.physicsBody.setLinearVelocity(new Ammo.btVector3(0, launchVector.y * force, launchVector.z * force));
-                    // gotDistance = 
-                    setUpToLaunch = false;
+                    projectile.userData.physicsBody.setLinearVelocity(
+                        new Ammo.btVector3(0, launchVector.y * force, launchVector.z * force));
+                    console.log(force);
+                    gotDistance = setUpToLaunch = false;
                     viewer.initClock();
                     
                     if (followTrajectory)
@@ -158,29 +163,29 @@
                     if (followTrajectory) {
                         
                         viewer.camera.position.z = projectile.position.z;
-                        viewer.setOrbitControlsTarget(projectile.position.x, projectile.position.y, projectile.position.z);
+                        viewer.setOrbitControlsTarget(
+                            projectile.position.x, 
+                            projectile.position.y, 
+                            projectile.position.z);
                         viewer.updateOrbitControls();
 
                     }
 
                     let projectilePos = projectile.position;
                     
-                    $('#projectilePos').val('x: ' + (projectilePos.x / unitConversion).toFixed(2) + ' y: ' + (projectilePos.y / unitConversion).toFixed(2) + ' z: ' + (projectilePos.z / unitConversion).toFixed(2));
-                        
-                    let catapultPos = viewer.groupArray[0].position;
-                    let dist = catapultPos.distanceTo(projectilePos);
-                    
-                    $('#projectileDist').val((dist / unitConversion).toFixed(2) + ' ' +  $('#units').val());
+                    $('#projectilePos').val(
+                        ' x: ' + ((projectilePos.y / 10) * unitConversion).toFixed(2) + 
+                        ' y: ' + ((projectilePos.z / 10) * unitConversion).toFixed(2));
 
-                    // if (projectilePos.y <= 15 && !gotDistance) {
+                    if (projectilePos.y <= 20 && !gotDistance) {
                         
-                    //     let catapultPos = viewer.groupArray[0].position;
-                    //     let dist = catapultPos.distanceTo(projectilePos);
+                        let catapultPos = viewer.groupArray[0].position;
+                        distance = catapultPos.distanceTo(projectilePos);
                         
-                    //     $('#projectileDist').val((dist / unitConversion).toFixed(2) + ' cm');
-                    //     gotDistance = true;
+                        $('#projectileDist').val(((distance / 10) * unitConversion).toFixed(2) + ' ' +  $('#units').val());
+                        gotDistance = true;
 
-                    // }
+                    }
 
                 }
 
@@ -197,15 +202,17 @@
             let unit = this.value;
 
             if (unit === 'mm')
-                unitConversion = 1;
-            else if (unit === 'cm') 
                 unitConversion = 10;
+            else if (unit === 'cm') 
+                unitConversion = 1;
             else if (unit === 'm')
-                unitConversion = 100;
+                unitConversion = 1 / 100;
             else if (unit === 'in')
-                unitConversion = 25.4;
+                unitConversion = 0.393701;
             else if (unit === 'ft')
-                unitConversion = 305;
+                unitConversion = 0.0328084;
+
+            $('#projectileDist').val(((distance / 10) * unitConversion).toFixed(2) + ' ' +  $('#units').val());
 
         })
 
@@ -215,6 +222,7 @@
             $('#projectileDist').val('');
             launch = false;
             drawCount = 0;
+            distance = 0;
 
             if (trajectoryLine !== null)
                 trajectoryLine.geometry.setDrawRange(0, drawCount);
@@ -236,9 +244,25 @@
 
         });
 
-        $('#setForce').change(function () {
+        $('#rotateCatapult').change(function() {
 
-            force = (this.value * 100) + 100;
+            $('#reset').trigger('click');
+
+            let catapult = viewer.groupArray[0];
+            catapult.rotation.y = THREE.Math.degToRad(this.value);
+
+        })
+
+        $('#setForce').change(function() {
+
+            force = (this.value * 100) + 200;
+
+        })
+
+        $('#setMass').change(function() {
+
+            mass = this.value;
+            physicsWorld.setGravity(new Ammo.btVector3(0, -105 * mass, 0));
 
         })
 
@@ -270,7 +294,7 @@
 
         });
 
-        $('#resetCamera').click(function () {
+        $('#resetCamera').click(function() {
 
             viewer.setOrbitControlsTarget(0, 0, 0);
             viewer.setCameraPos(-1018, 503, -1.2);
@@ -308,7 +332,7 @@
             solver                 = new Ammo.btSequentialImpulseConstraintSolver();
 
         physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
-        physicsWorld.setGravity(new Ammo.btVector3(0, -105, 0));
+        physicsWorld.setGravity(new Ammo.btVector3(0, -105 * mass, 0));
 
     }
 
@@ -324,6 +348,8 @@
         
         viewer.initStats();
         viewer.setBackgroundColor(0x87ceeb);
+        viewer.addPlane(30000, 100);
+        viewer.plane.position.y += 5; 
 
         // Enable shadow map
         viewer.enableShadowMap();
@@ -344,7 +370,7 @@
         viewer.setDirectionalLightFrustrum(-d, d, d, -d, 13500);
         
         // Initialize orbit controls
-        viewer.initOrbitControls(500, 15000);
+        viewer.initOrbitControls(500, 30000);
         viewer.setOrbitControlsTarget(0, 0, 0);
         viewer.setCameraPos(-1018, 503, -1.2);
         viewer.updateOrbitControls();
@@ -354,8 +380,8 @@
     // Object creation
     function createPlane() {
     
-        let pos = {x: 0, y: 0, z: 7200};
-        let scale = {x: 500, y: 2, z: 15000};
+        let pos = {x: 0, y: 0, z: 0};
+        let scale = {x: 30000, y: 2, z: 30000};
         let quat = {x: 0, y: 0, z: 0, w: 1};
         let mass = 0;
         let planeIndex;
@@ -363,7 +389,7 @@
         // threeJS Section
         if (viewer !== null) {
 
-            planeIndex = viewer.addObject({ type: 'box', position: [pos.x, pos.y, pos.z], scale: [scale.x, scale.y, scale.z], color: 0xbfd1e5 });
+            planeIndex = viewer.addObject({ type: 'box', position: [pos.x, pos.y, pos.z], scale: [scale.x, scale.y, scale.z], color: 0xFFFFFF });
 
         }
 
@@ -522,10 +548,13 @@
     function updateTrajectoryLine() {
 
         var positions = trajectoryLine.geometry.attributes.position.array;
+
+        var projectilePos = new THREE.Vector3();
+        projectilePos.setFromMatrixPosition(projectile.matrixWorld);
         
-        positions[drawCount * 3] = projectile.position.x;
-        positions[(drawCount * 3) + 1] = projectile.position.y;
-        positions[(drawCount * 3) + 2] = projectile.position.z;
+        positions[drawCount * 3] = projectilePos.x;
+        positions[(drawCount * 3) + 1] = projectilePos.y;
+        positions[(drawCount * 3) + 2] = projectilePos.z;
         drawCount += 1;
         
         trajectoryLine.geometry.setDrawRange(0, drawCount);
@@ -539,7 +568,7 @@
         if (deltaTime === 0)
             return;
         
-        physicsWorld.stepSimulation(deltaTime, 10, 1 / 800);
+        physicsWorld.stepSimulation(deltaTime* 5, 50, 1 / 800);
         let objAmmo = projectile.userData.physicsBody;
         let ms = objAmmo.getMotionState();
 
@@ -548,6 +577,8 @@
             ms.getWorldTransform(tmpTrans);
             let p = tmpTrans.getOrigin();
             let q = tmpTrans.getRotation();
+            //projectile.position.y = p.y();
+            //projectile.position.z = p.z();
             projectile.position.set(p.x(), p.y(), p.z());
             projectile.quaternion.set(q.x(), q.y(), q.z(), q.w());
                 
