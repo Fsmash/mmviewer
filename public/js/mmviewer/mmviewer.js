@@ -400,6 +400,7 @@ class MMViewer {
         let castShadow = o.castShadow === undefined ? false : o.castShadow;
         let receiveShadow = o.receiveShadow === undefined ? false : o.receiveShadow;
         let materialColor = o.color === undefined ? 0xff0505 : o.color;
+        let materialOpacity = o.opacity === undefined ? 1 : o.opacity;
 
         let geometry;
         let material;
@@ -421,6 +422,10 @@ class MMViewer {
         else if (materialType === 'normal') {
             material = new THREE.MeshNormalMaterial();
         }
+
+        if (materialOpacity !== 1)
+            material.transparent = true;
+        material.opacity = materialOpacity;
 
         // Create and add mesh object to scene
         var index = this.meshArray.push(new THREE.Mesh(geometry, material)) - 1;
