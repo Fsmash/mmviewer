@@ -8,28 +8,24 @@ import Stats from '/js/mmviewer/threejs/stats.module.js';
 
 class MMViewer {
 
-    // Useful debug objects
-    stats = null;
     // Rendering Objects
     clock = null;
     camera = null;
     scene = null; 
     renderer = null;
+    stats = null;            // useful for debug, set constructor flag to initialize
+    container = null;
     // Controls
     orbitControls = null;
     //Scene objects
     meshArray = [];          // made up of three.js mesh objects with geometry and material
     groupArray = [];
     plane = null;            // Plane helper
-    // Animation
-    mixers = [];
     // Light objects
-    hemiLight = null;        // Hemisphere Light
-    hemiLightHelper = null;
+    hemiLight = null;
     dirLight = null;
+    hemiLightHelper = null;
     dirLightHelper = null;
-    // lightArray = [];      // made up of three.js light objects that illuminate the scene
-    // helperArray = [];     // made up of three.js helper objects for mesh or light objects
     // Loaders
     gltfLoader = null;
     
@@ -45,6 +41,7 @@ class MMViewer {
         let cameraPos = o.cameraPos === undefined ? [0, 0, 0] : o.cameraPos;
         let shadowMap = o.shadowMap === undefined ? false : o.shadowMap;
         let backgroundColor = o.backgroundColor === undefined ? 0xff0505 : o.backgroundColor;
+        let stats = o.stats === undefined ? false : true;
 
         // Camera setup
         this.camera = new THREE.PerspectiveCamera(fov, aspectRatio, near, far); // params are fov, aspect ratio, near and far clipping plane
@@ -62,19 +59,25 @@ class MMViewer {
         this.renderer.setPixelRatio(width / height);
         this.renderer.setSize(width, height);
         this.renderer.shadowMap.enabled = shadowMap;
-        document.body.appendChild(this.renderer.domElement);
-        
-    }
 
-    initStats() {
-
-        if (this.stats === null) {
+        if (stats && this.stats === null) {
             this.stats = new Stats();
             this.stats.domElement.style.position = 'absolute';
             this.stats.domElement.style.top = '0px';
-            document.body.appendChild(this.stats.domElement);
         }
 
+        if (o.container !== undefined) {
+            this.container = document.getElementById(o.container);
+            this.container.appendChild(this.renderer.domElement);
+            if (this.stats !== null)
+                this.container.appendChild(this.stats.domElement);
+        }
+        else {
+            document.body.appendChild(this.renderer.domElement);
+            if (this.stats !== null)
+                document.body.appendChild(this.stats.domElement);
+        }
+        
     }
 
     initClock() {
@@ -87,6 +90,13 @@ class MMViewer {
 
         if (this.clock !== null)
             return this.clock.getDelta();
+
+    }
+
+    getElapsedTime() {
+
+        if (this.clock !== null)
+            return this.clock.getElapsedTime();
 
     }
 
@@ -108,8 +118,6 @@ class MMViewer {
         this.orbitControls = new OrbitControls(this.camera, this.renderer.domElement);
         this.orbitControls.minDistance = min;
         this.orbitControls.maxDistance = max;
-        //this.orbitControls.update();
-        //this.orbitControls.addEventListener('change', this.render.bind(this));
 
     }
 
@@ -145,12 +153,6 @@ class MMViewer {
     setBackgroundColor(color) {
         
         this.scene.background = new THREE.Color(color);
-
-    }
-
-    // Objects in scene to be pushed down to pipline
-    // TODO: add ability to add as many light objects into scene
-    addLightObject(o) {
 
     }
 
@@ -218,7 +220,7 @@ class MMViewer {
 
         if (this.dirLight !== null)
             removeHemiLight();
-        this.dirLight = new THREE.DirectionalLight( 0xffffff , 1);
+        this.dirLight = new THREE.DirectionalLight(color , intensity);
         this.scene.add(this.dirLight);
 
     }
@@ -552,13 +554,12 @@ class MMViewer {
     
     }
 
-    async loadAsyncGLTF(path, o = {}) {
+    async loadAsyncGLTF(path) {
         
         if (this.gltfLoader === null)
             this.gltfLoader = new GLTFLoader();
 
-        let promise = await this.gltfLoader.loadAsync(path);
-        return promise;
+        return this.gltfLoader.loadAsync(path);
     
     }
 
