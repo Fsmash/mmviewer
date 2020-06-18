@@ -8,23 +8,29 @@
 
     <style>
         
-        div {
-            margin: 5px;
-        }
+    div {
+        margin: 5px;
+    }
 
-        #ui {
-            position: absolute;
-            background-color: lightgrey;
-            bottom:0; 
-            right:0;
-            border-radius: 10px;
-            width: 40%;
-            padding: 10px;
-        }
+    #scene {
+        position: absolute;
+        width: 80%;
+        height: 60%;
+    }
 
-        #setForce {
-            width: 8%;
-        }
+    #ui {
+        position: absolute;
+        background-color: lightgrey;
+        bottom:0; 
+        left:0;
+        border-radius: 10px;
+        width: 40%;
+        padding: 10px;
+    }
+
+    #setForce {
+        width: 8%;
+    }
 
     </style>
 
@@ -65,6 +71,7 @@
                 <button id="resetCamera">Reset Camera</button>
                 <input type="checkbox" id="followTrajectory" name="followTrajectory">
                 <label for="followTrajectory">Follow Trajectory</label><br>
+                <button id="exportCSV">Export Data</button>
             </div>
         </div>
     </div>
@@ -82,8 +89,6 @@
     
     // Graphics globals
     let viewer = null;                  // three.js viewer global
-    // mesh ojbects
-    let catapultArm = null, projectile = null, bar1 = null, bar2 = null, bar3 = null, bar4 = null, trajectoryLine = null;
     let drawCount = 0;
     let launch = false;
     let readyToAnimate = false;
@@ -91,6 +96,12 @@
     let originalProjectilePos = null;
     let followTrajectory = false;
     let gotDistance = false;
+
+    // Mesh objects
+    let catapultArm = null, 
+        projectile = null, 
+        bar1 = null, bar2 = null, bar3 = null, bar4 = null, 
+        trajectoryLine = null;
 
     // Angles (in radians)
     let armAngle = 0;
@@ -102,10 +113,13 @@
     const angle4 = 1.5708;      // 90
     const maxPoints = 12000;
     let launchAngle = angle1;
+    
+    // Physics variables
     let force = 300;
     let mass = 1;
     let unitConversion = 1;
     let distance = 0;
+    let trajectoryData = [['time (in seconds)', 'x', 'y']];
 
     Ammo().then(start);
     
@@ -127,29 +141,39 @@
         // Animate scene with call back to update physics with delta time
         viewer.animateWithCallBack(function() {
 
+            // console.log(viewer.camera.position);
+
             if (readyToAnimate && launch) {
 
                 if (armAngle <= maxAngle) {
 
+                    $('#exportCSV').prop("disabled", true);
                     catapultArm.rotation.x += 0.1;
                     armAngle = catapultArm.rotation.x;
-                    rotateAboutPoint(projectile, catapultArm.position, new THREE.Vector3(1, 0, 0), 0.1);
                     setUpToLaunch = true;
+                    rotateAboutPoint(projectile, 
+                        catapultArm.position, 
+                        new THREE.Vector3(1, 0, 0), 0.1);
 
                 }
                 else if(setUpToLaunch) {
 
                     createDynamicProjectile();
+                    
                     let launchVector = new THREE.Vector3(0, 1, 0);
-                    launchVector.applyAxisAngle(new THREE.Vector3(1, 0, 0), launchAngle);
+                    launchVector.applyAxisAngle(new THREE.Vector3(1, 0, 0), 
+                        launchAngle);
+                    
                     projectile.userData.physicsBody.setLinearVelocity(
-                        new Ammo.btVector3(0, launchVector.y * force, launchVector.z * force));
-                    console.log(force);
-                    gotDistance = setUpToLaunch = false;
-                    viewer.initClock();
+                        new Ammo.btVector3(0, 
+                            launchVector.y * force, 
+                            launchVector.z * force));
                     
                     if (followTrajectory)
                         viewer.camera.position.x = -1000;
+
+                    gotDistance = setUpToLaunch = false;
+                    viewer.initClock();
 
                 }
                 else {
@@ -157,7 +181,7 @@
                     let deltaTime = viewer.getDeltaTime();
                     updatePhysics(deltaTime);
                     
-                    if ((drawCount) <= (maxPoints))
+                    if (drawCount <= maxPoints)
                         updateTrajectoryLine();
 
                     if (followTrajectory) {
@@ -171,21 +195,36 @@
 
                     }
 
-                    let projectilePos = projectile.position;
-                    
-                    $('#projectilePos').val(
-                        ' x: ' + ((projectilePos.y / 10) * unitConversion).toFixed(2) + 
-                        ' y: ' + ((projectilePos.z / 10) * unitConversion).toFixed(2));
+                    if (!gotDistance) {
 
-                    if (projectilePos.y <= 20 && !gotDistance) {
+                        let projectilePos = new THREE.Vector3();
+                        projectilePos.setFromMatrixPosition(projectile.matrixWorld);
+                        let x = ((projectilePos.x / 10) * unitConversion).toFixed(2);
+                        let y = ((projectilePos.z / 10) * unitConversion).toFixed(2);
+                        let unit = $('#units').val();
+                        trajectoryData.push([(viewer.getElapsedTime()).toFixed(2), x + unit, y + unit]);
                         
-                        let catapultPos = viewer.groupArray[0].position;
-                        distance = catapultPos.distanceTo(projectilePos);
-                        
-                        $('#projectileDist').val(((distance / 10) * unitConversion).toFixed(2) + ' ' +  $('#units').val());
-                        gotDistance = true;
+                        if (projectilePos.y <= 20) {
+                            
+                            // Distance
+                            let catapultPos = viewer.groupArray[0].position;
+                            distance = catapultPos.distanceTo(projectilePos);
+                            gotDistance = true;
+                            
+                            $('#projectileDist').val(
+                                ((distance / 10) * unitConversion).toFixed(2) 
+                                + ' ' +  $('#units').val());
+
+                            // 'Cartesian' coordinates
+                            $('#projectilePos').val(' x: ' + x + ' y: ' + y);
+
+                            // Data ready to export
+                            $('#exportCSV').prop("disabled", false);
+
+                        }
 
                     }
+                    
 
                 }
 
@@ -201,16 +240,25 @@
 
             let unit = this.value;
 
-            if (unit === 'mm')
-                unitConversion = 10;
-            else if (unit === 'cm') 
-                unitConversion = 1;
-            else if (unit === 'm')
-                unitConversion = 1 / 100;
-            else if (unit === 'in')
-                unitConversion = 0.393701;
-            else if (unit === 'ft')
-                unitConversion = 0.0328084;
+            switch(unit) {
+
+                case 'mm':
+                    unitConversion = 10;
+                    break;
+                case 'cm': 
+                    unitConversion = 1;
+                    break;
+                case 'm':
+                    unitConversion = 1 / 100;
+                    break;
+                case 'in':
+                    unitConversion = 0.393701;
+                    break;
+                case 'ft':
+                    unitConversion = 0.0328084;
+                    break;
+
+            }
 
             $('#projectileDist').val(((distance / 10) * unitConversion).toFixed(2) + ' ' +  $('#units').val());
 
@@ -223,6 +271,7 @@
             launch = false;
             drawCount = 0;
             distance = 0;
+            trajectoryData = [['time (in seconds)', 'x', 'y']];
 
             if (trajectoryLine !== null)
                 trajectoryLine.geometry.setDrawRange(0, drawCount);
@@ -240,6 +289,7 @@
 
         $('#launch').click(function() {
 
+            $('#reset').trigger('click');
             launch = true;
 
         });
@@ -247,7 +297,6 @@
         $('#rotateCatapult').change(function() {
 
             $('#reset').trigger('click');
-
             let catapult = viewer.groupArray[0];
             catapult.rotation.y = THREE.Math.degToRad(this.value);
 
@@ -272,22 +321,27 @@
             bar2.visible = false;
             bar3.visible = false;
             bar4.visible = false;
-        
-            if (this.value === 'angle1') {
-                launchAngle = angle1;
-                bar1.visible = true;
-            }
-            else if (this.value === 'angle2') {
-                launchAngle = angle2;
-                bar2.visible = true;
-            }
-            else if (this.value === 'angle3') {
-                launchAngle = angle3;
-                bar3.visible = true;
-            }
-            else {
-                launchAngle = angle4;
-                bar4.visible = true;
+            let angle = this.value;
+
+            switch (angle) {
+
+                case 'angle1':
+                    launchAngle = angle1;
+                    bar1.visible = true;
+                    break;
+                case 'angle2':
+                    launchAngle = angle2;
+                    bar2.visible = true;
+                    break;
+                case 'angle3':
+                    launchAngle = angle3;
+                    bar3.visible = true;
+                    break;
+                case 'angle4':
+                    launchAngle = angle4;
+                    bar4.visible = true;
+                    break;
+
             }
 
             $('#reset').trigger('click');
@@ -297,7 +351,7 @@
         $('#resetCamera').click(function() {
 
             viewer.setOrbitControlsTarget(0, 0, 0);
-            viewer.setCameraPos(-1018, 503, -1.2);
+            viewer.setCameraPos(-1694, 247, -2);
             viewer.updateOrbitControls();
             
         })
@@ -308,6 +362,21 @@
 
             if (!followTrajectory)
                 $('#resetCamera').trigger('click');
+
+        });
+
+        $('#exportCSV').prop('disabled', true);
+
+        $('#exportCSV').click(function() {
+
+            let csvContent = "data:text/csv;charset=utf-8," 
+                + trajectoryData.map(e => e.join(",")).join("\n");
+            let encodedUri = encodeURI(csvContent);
+            let link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "launch_data.csv");
+            document.body.appendChild(link);
+            link.click();
 
         });
 
@@ -344,9 +413,9 @@
         let height = window.innerHeight;
 
         // MMViewer initialization
-        viewer = new MMViewer({far: 50000});
+        let container = document.getElementById('scene');
+        viewer = new MMViewer({far: 50000, container: 'scene', stats: true, width: container.offsetWidth, height: container.offsetHeight});
         
-        viewer.initStats();
         viewer.setBackgroundColor(0x87ceeb);
         viewer.addPlane(30000, 100);
         viewer.plane.position.y += 5; 
@@ -358,21 +427,18 @@
         viewer.addHemiLight(0xffffff, 0xffffff, 0.1);
         viewer.setHemiLightHSL(0.6, 0.6, 0.6);
         viewer.setHemiLightGroundHSL(0.1, 1, 0.4);
-        viewer.setHemiLightPosition(0, 500, 100);
+        viewer.setHemiLightPosition(0, 100, 0);
         
         // Adding directional light to scene
         viewer.addDirectionalLight(0xffffff, 1);
         viewer.setDirectionalLightHSL(0.1, 1, 0.95);
         viewer.setDirectionalLightPosition(-1, 1.75, 1);
         viewer.setDirectionalLightScalar(500);
-        viewer.setDirectionalLightShadowMap(2048, 2048);
-        let d = 1000;
-        viewer.setDirectionalLightFrustrum(-d, d, d, -d, 13500);
         
         // Initialize orbit controls
         viewer.initOrbitControls(500, 30000);
         viewer.setOrbitControlsTarget(0, 0, 0);
-        viewer.setCameraPos(-1018, 503, -1.2);
+        viewer.setCameraPos(-1694, 247, -2);
         viewer.updateOrbitControls();
     
     }
@@ -426,55 +492,44 @@
             let material = new THREE.MeshPhongMaterial({ color: 0xff0505 });
             let children = gltf.scene.children;
             
-            for (var i = children.length - 1; i >= 0; i--) {
+            for (let i = children.length - 1; i >= 0; i--) {
                 
                 if (children[i].isMesh) {
 
                     let name = children[i].name;
                     children[i].material.dispose();
-                    
-                    if (name === 'barWRidges002') {
+
+                    switch (name) {
                         
-                        bar1 = children[i];
-                        children[i].material = material;
-
-                    }
-                    else if (name === 'barWRidges003') {
-                        
-                        bar2 = children[i];
-                        children[i].visible = false;
-                        children[i].material = material;
-
-                    }
-                    else if (name === 'barWRidges004') {
-                        
-                        bar3 = children[i];
-                        children[i].visible = false;
-                        children[i].material = material;
-
-                    }
-                    else if (name === 'barWRidges005') {
-                        
-                        bar4 = children[i];
-                        children[i].visible = false;
-                        children[i].material = material;
-
-                    }
-                    else if (name === 'projectile') {
-                        
-                        projectile = children[i];
-                        children[i].material = new THREE.MeshPhongMaterial({ color: 0xffd700 });
-
-                    }
-                    else if (name === 'catArmXL001') {
-
-                        catapultArm = children[i];
-                        children[i].material = material;
-
-                    }
-                    else {
-
-                        children[i].material = material;
+                        case 'barWRidges002':
+                            bar1 = children[i];
+                            children[i].material = material;
+                            break;
+                        case 'barWRidges003':
+                            bar2 = children[i];
+                            children[i].visible = false;
+                            children[i].material = material;
+                            break;
+                        case 'barWRidges004':
+                            bar3 = children[i];
+                            children[i].visible = false;
+                            children[i].material = material;
+                            break;
+                        case 'barWRidges005':
+                            bar4 = children[i];
+                            children[i].visible = false;
+                            children[i].material = material;
+                            break;
+                        case 'projectile':
+                            projectile = children[i];
+                            children[i].material = new THREE.MeshPhongMaterial({ color: 0xffd700 });
+                            break;
+                        case 'catArmXL001':
+                            catapultArm = children[i];
+                            children[i].material = material;
+                            break;
+                        default:
+                            children[i].material = material;
 
                     }
 
@@ -547,9 +602,9 @@
 
     function updateTrajectoryLine() {
 
-        var positions = trajectoryLine.geometry.attributes.position.array;
+        let positions = trajectoryLine.geometry.attributes.position.array;
 
-        var projectilePos = new THREE.Vector3();
+        let projectilePos = new THREE.Vector3();
         projectilePos.setFromMatrixPosition(projectile.matrixWorld);
         
         positions[drawCount * 3] = projectilePos.x;
@@ -577,13 +632,14 @@
             ms.getWorldTransform(tmpTrans);
             let p = tmpTrans.getOrigin();
             let q = tmpTrans.getRotation();
-            //projectile.position.y = p.y();
-            //projectile.position.z = p.z();
-            projectile.position.set(p.x(), p.y(), p.z());
+            projectile.position.y = p.y();
+            projectile.position.z = p.z();
             projectile.quaternion.set(q.x(), q.y(), q.z(), q.w());
                 
         }
 
     }
+
+</script>
 
 </script>
